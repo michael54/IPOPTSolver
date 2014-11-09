@@ -35,6 +35,8 @@ public final class q1 extends HttpServlet {
 	private static MongoClient mongoClient = null;
 	private static DB db = null;
 	private static GridFS gridfs = null;
+	static String ipoptPath = "/home/michael/Downloads/Ipopt-3.11.9/build/bin/ipopt";
+	static String s = null;
 
 	/**
 	 * @see HttpServlet#HttpServlet()
@@ -88,21 +90,36 @@ public final class q1 extends HttpServlet {
 		String idString = request.getParameter("id");
 		DBCollection coll = db.getCollection("n_l_p_model");
 		System.out.println(coll.toString());
-		
+
 		DBObject searchById = new BasicDBObject("_id", new ObjectId(idString));
 		DBObject found = coll.findOne(searchById);
-		System.out.println(found);
-		System.out.println(found.get("f"));
+		String fileId = found.get("f").toString();
 		GridFSDBFile file = gridfs.findOne((ObjectId) found.get("f"));
-		BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream()));
-        StringBuilder out = new StringBuilder();
-        String line;
-        while ((line = reader.readLine()) != null) {
-            out.append(line).append("\n");
-        }
-        System.out.println(out.toString());   //Prints the string content read from input stream
-        responseOut.print(out);
-        reader.close();
+		String fileName = "/tmp/" + fileId + ".nl";
+		file.writeTo(fileName);
+
+		Runtime rt = Runtime.getRuntime();
+		String[] cmd = new String[2];
+		cmd[0] = ipoptPath + " " + fileName;
+		Process p = rt.exec(cmd[0]);
+		BufferedReader stdInput = new BufferedReader(new InputStreamReader(
+				p.getInputStream()));
+		while ((s = stdInput.readLine()) != null) {
+			responseOut.println(s);
+		}
+		BufferedReader stdError = new BufferedReader(new InputStreamReader(
+				p.getErrorStream()));
+		while ((s = stdError.readLine()) != null) {
+			responseOut.println(s);
+		}
+		try {
+			p.waitFor();
+			stdInput.close();
+			stdError.close();
+
+		} catch (InterruptedException e1) {
+			e1.printStackTrace();
+		}
 		
 	}
 
