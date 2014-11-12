@@ -4,7 +4,8 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
-import java.net.UnknownHostException;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.SynchronousQueue;
 
 import javax.servlet.ServletConfig;
 import javax.servlet.ServletException;
@@ -13,14 +14,13 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-import org.apache.tomcat.util.http.fileupload.IOUtils;
+import org.apache.commons.io.IOUtils;
 import org.bson.types.ObjectId;
 
+import com.google.gson.Gson;
 import com.mongodb.DB;
 import com.mongodb.DBCollection;
 import com.mongodb.DBObject;
-import com.mongodb.DBRef;
-import com.mongodb.MongoClient;
 import com.mongodb.MongoException;
 import com.mongodb.BasicDBObject;
 import com.mongodb.gridfs.GridFS;
@@ -32,11 +32,12 @@ import com.mongodb.gridfs.GridFSDBFile;
 @WebServlet("/q1")
 public final class q1 extends HttpServlet {
 	private static final long serialVersionUID = 1L;
-	private static MongoClient mongoClient = null;
 	private static DB db = null;
 	private static GridFS gridfs = null;
 	static String ipoptPath = "/home/michael/Downloads/Ipopt-3.11.9/build/bin/ipopt";
 	static String s = null;
+	private static final int POOL_SIZE = 1;
+	private static final BlockingQueue<Task> queue = new SynchronousQueue<Task>();
 
 	/**
 	 * @see HttpServlet#HttpServlet()
@@ -44,6 +45,10 @@ public final class q1 extends HttpServlet {
 	public q1() {
 		super();
 		// TODO Auto-generated constructor stub
+		for (int i = 0; i < POOL_SIZE; i++) {
+			Worker worker = new Worker(queue);
+			worker.start();
+		}
 	}
 
 	/**
@@ -52,13 +57,8 @@ public final class q1 extends HttpServlet {
 	public void init(ServletConfig config) throws ServletException {
 		// TODO Auto-generated method stub
 		try {
-			mongoClient = new MongoClient("192.168.10.10", 27017);
-			db = mongoClient.getDB("IPOPT");
+			db = utils.MongoDBUtils.connect();
 			gridfs = new GridFS(db);
-			System.out.println("Connected");
-		} catch (UnknownHostException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
 		} catch (MongoException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -70,13 +70,7 @@ public final class q1 extends HttpServlet {
 	 */
 	public void destroy() {
 		// TODO Auto-generated method stub
-		if (mongoClient != null) {
-			try {
-				mongoClient.close();
-			} catch (MongoException e) {
-				e.printStackTrace();
-			}
-		}
+		utils.MongoDBUtils.destory();
 	}
 
 	/**
@@ -86,13 +80,11 @@ public final class q1 extends HttpServlet {
 	protected void doGet(HttpServletRequest request,
 			HttpServletResponse response) throws ServletException, IOException {
 		// TODO Auto-generated method stub
+		response.setContentType("application/json");
+		response.setCharacterEncoding("UTF-8");
 		PrintWriter responseOut = response.getWriter();
 		String idString = request.getParameter("id");
-		DBCollection coll = db.getCollection("n_l_p_model");
-		System.out.println(coll.toString());
-
-		DBObject searchById = new BasicDBObject("_id", new ObjectId(idString));
-		DBObject found = coll.findOne(searchById);
+		DBObject found = utils.MongoDBUtils.getModelFromSubmission(idString);
 		String fileId = found.get("f").toString();
 		GridFSDBFile file = gridfs.findOne((ObjectId) found.get("f"));
 		String fileName = "/tmp/" + fileId + ".nl";
@@ -104,14 +96,17 @@ public final class q1 extends HttpServlet {
 		Process p = rt.exec(cmd[0]);
 		BufferedReader stdInput = new BufferedReader(new InputStreamReader(
 				p.getInputStream()));
-		while ((s = stdInput.readLine()) != null) {
-			responseOut.println(s);
-		}
+		String stdOutput = IOUtils.toString(stdInput);
 		BufferedReader stdError = new BufferedReader(new InputStreamReader(
 				p.getErrorStream()));
-		while ((s = stdError.readLine()) != null) {
-			responseOut.println(s);
-		}
+		String errOutput = IOUtils.toString(stdError);
+		DBCollection resultColl = db.getCollection("result");
+		BasicDBObject result = new BasicDBObject("std", stdOutput)
+				.append("err", errOutput)
+				.append("code", 0);
+		resultColl.insert(result);
+		utils.MongoDBUtils.updateSubmissionResult(idString, (ObjectId) result.get("_id"), stdOutput);
+		responseOut.write(new Gson().toJson(result));
 		try {
 			p.waitFor();
 			stdInput.close();
