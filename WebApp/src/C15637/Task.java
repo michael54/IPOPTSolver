@@ -1,22 +1,21 @@
 package C15637;
 
-import java.io.PrintWriter;
-
 public class Task {
-	public Task(String fileName, PrintWriter responseOut) {
-		this.fileName = fileName;
-		this.responseOut = responseOut;
-	}
 
 	private String fileName;
-	private PrintWriter responseOut;
+	private String idString;
+
+	public Task(String fileName, String idString) {
+		this.fileName = fileName;
+		this.idString = idString;
+	}
 
 	public String getFileName() {
 		return fileName;
 	}
 
-	public PrintWriter getResponseOut() {
-		return responseOut;
+	public String getIdString() {
+		return idString;
 	}
 
 }

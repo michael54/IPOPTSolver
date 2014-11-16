@@ -23,7 +23,7 @@ public class MongoDBUtils {
 
 	public static DB connect() {
 		try {
-			mongoClient = new MongoClient("192.168.10.10", 27017);
+			mongoClient = new MongoClient("127.0.0.1", 27017);
 			db = mongoClient.getDB("IPOPT");
 			submissionColl = db.getCollection("submission");
 			modelColl = db.getCollection("n_l_p_model");
@@ -66,7 +66,7 @@ public class MongoDBUtils {
 			DBObject submission = submissionColl.findOne(searchById);
 			submission.put("result", resultId);
 			submissionColl.save(submission);
-			if ((boolean)submission.get("sendemail")==true){
+			if ((boolean) submission.get("sendemail") ==true){
 				utils.EmailUtils.sendResult((String) submission.get("email"), result);
 			}
 		} catch (MongoException e) {
